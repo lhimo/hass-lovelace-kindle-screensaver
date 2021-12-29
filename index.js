@@ -6,7 +6,7 @@ const { promises: fs } = require("fs");
 const fsExtra = require("fs-extra");
 const puppeteer = require("puppeteer");
 const { CronJob } = require("cron");
-const gm = require("gm");
+const execFile = require('child_process').execFile;
 
 // keep state of current battery level and whether the device is charging
 const batteryStore = {};
@@ -165,19 +165,14 @@ async function renderAndConvertAsync(browser) {
     const outputPath = pageConfig.outputPath;
     await fsExtra.ensureDir(path.dirname(outputPath));
 
-    const tempPath = outputPath + ".temp";
-
     console.log(`Rendering ${url} to image...`);
-    await renderUrlToImageAsync(browser, pageConfig, url, tempPath);
+    await renderUrlToImageAsync(browser, pageConfig, url, outputPath);
 
     console.log(`Converting rendered screenshot of ${url} to grayscale png...`);
     await convertImageToKindleCompatiblePngAsync(
-      pageConfig,
-      tempPath,
       outputPath
     );
 
-    fs.unlink(tempPath);
     console.log(`Finished ${url}`);
 
     if (
@@ -290,27 +285,16 @@ async function renderUrlToImageAsync(browser, pageConfig, url, path) {
   }
 }
 
-function convertImageToKindleCompatiblePngAsync(
-  pageConfig,
-  inputPath,
-  outputPath
-) {
+function convertImageToKindleCompatiblePngAsync(filename) {
   return new Promise((resolve, reject) => {
-    gm(inputPath)
-      .options({
-        imageMagick: config.useImageMagick === true
-      })
-      .dither(pageConfig.dither)
-      .rotate("white", pageConfig.rotation)
-      .type(pageConfig.colorMode)
-      .bitdepth(pageConfig.grayscaleDepth)
-      .quality(100)
-      .write(outputPath, (err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
+    const args = [filename, '-gravity', 'center', '-extent', '600x800', '-colorspace', 'gray', '-depth', '8', filename];
+    execFile('convert', args, (error, stdout, stderr) => {
+      if (error) {
+        console.error({ error, stdout, stderr });
+        reject();
+      } else {
+        resolve();
+      }
+    });
   });
 }
